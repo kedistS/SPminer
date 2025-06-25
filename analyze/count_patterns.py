@@ -322,8 +322,14 @@ def count_graphlets(queries, targets, args):
         print(f"After sampling: {len(targets)} target graphs to process")
     
     # Pre-compute graph statistics
-    target_stats = [compute_graph_stats(t) for t in targets]
-    query_stats = [compute_graph_stats(q) for q in queries]
+    #target_stats = [compute_graph_stats(t) for t in targets]
+    #query_stats = [compute_graph_stats(q) for q in queries]
+    #changed to multiprocessing using 
+    with Pool(processes=args.n_workers) as pool:
+
+        target_stats = pool.map(compute_graph_stats, targets)
+        
+        query_stats = pool.map(compute_graph_stats, queries)
     
     # Generate work items with filtering
     inp = []
@@ -414,6 +420,69 @@ def count_graphlets(queries, targets, args):
     print("\nDone counting")
     return [n_matches[i] for i in range(len(queries))]
 
+#multiprocessing gen_baseline_queries ----------------
+def generate_one_baseline(args):
+    import networkx as nx
+    import random
+
+    i, query, targets, method = args
+
+    if len(query) == 0:
+        return query
+
+    MAX_ATTEMPTS = 100  # Avoid infinite loops
+
+    for attempt in range(MAX_ATTEMPTS):
+        try:
+            graph = random.choice(targets)
+            if graph.number_of_nodes() == 0:
+                continue
+
+            if method == "radial":
+                node = random.choice(list(graph.nodes))
+                neigh = list(nx.single_source_shortest_path_length(graph, node, cutoff=3).keys())
+                subgraph = graph.subgraph(neigh)
+                if subgraph.number_of_nodes() == 0:
+                    continue
+                largest_cc = max(nx.connected_components(subgraph), key=len)
+                neigh = subgraph.subgraph(largest_cc)
+                neigh = nx.convert_node_labels_to_integers(neigh)
+                if len(neigh) == len(query):
+                    return neigh
+
+            elif method == "tree":
+                start_node = random.choice(list(graph.nodes))
+                neigh = [start_node]
+                frontier = list(set(graph.neighbors(start_node)) - set(neigh))
+                while len(neigh) < len(query) and frontier:
+                    new_node = random.choice(frontier)
+                    neigh.append(new_node)
+                    frontier += list(graph.neighbors(new_node))
+                    frontier = [x for x in frontier if x not in neigh]
+                if len(neigh) == len(query):
+                    sub = graph.subgraph(neigh)
+                    return nx.convert_node_labels_to_integers(sub)
+
+        except Exception as e:
+            continue  # Safe fallback on error
+
+    print(f"[WARN] Baseline not found for query {i} after {MAX_ATTEMPTS} attempts.")
+    return nx.Graph()  # Return empty graph if failed
+
+def gen_baseline_queries(queries, targets, method="radial", node_anchored=False):
+    print(f"Generating {len(queries)} baseline queries in parallel using method: {method}")
+    
+    args_list = [(i, query, targets, method) for i, query in enumerate(queries)]
+    with Pool(processes=os.cpu_count()) as pool:
+        results = pool.map(generate_one_baseline, args_list)
+    
+    return results
+
+def convert_to_networkx(graph):
+    if isinstance(graph, nx.Graph):
+        return graph
+    return pyg_utils.to_networkx(graph).to_undirected()
+    
 def main():
     global args
     args = arg_parse()
@@ -468,13 +537,10 @@ def main():
             queries = [q for score, q in cand_patterns[10]][:200]
         dataset = TUDataset(root='/tmp/ENZYMES', name='ENZYMES')
 
-    # Convert dataset to networkx graphs
-    targets = []
-    for i in range(len(dataset)):
-        graph = dataset[i]
-        if not type(graph) == nx.Graph:
-            graph = pyg_utils.to_networkx(dataset[i]).to_undirected()
-        targets.append(graph)
+    # Convert dataset to networkx graphs with multiprocesssing.pool to make it faster for large dataset
+    
+    with Pool(processes=args.n_workers) as pool:
+        targets = pool.map(convert_to_networkx, dataset)
 
     # Load query patterns
     if args.dataset != "analyze":
@@ -505,54 +571,7 @@ def main():
         json.dump((query_lens, n_matches, []), f)
     print(f"Results saved to {args.out_path}")
 
-def gen_baseline_queries(queries, targets, method="mfinder", node_anchored=False):
-    """Generate baseline queries for comparison."""
-    if method == "mfinder":
-        return utils.gen_baseline_queries_mfinder(queries, targets,
-            node_anchored=node_anchored)
-    elif method == "rand-esu":
-        return utils.gen_baseline_queries_rand_esu(queries, targets,
-            node_anchored=node_anchored)
-    
-    # Other methods implementation
-    neighs = []
-    for i, query in enumerate(queries):
-        print(i)
-        found = False
-        if len(query) == 0:
-            neighs.append(query)
-            found = True
-        while not found:
-            if method == "radial":
-                graph = random.choice(targets)
-                node = random.choice(list(graph.nodes))
-                neigh = list(nx.single_source_shortest_path_length(graph, node,
-                    cutoff=3).keys())
-                neigh = graph.subgraph(neigh)
-                neigh = neigh.subgraph(list(sorted(nx.connected_components(
-                    neigh), key=len))[-1])
-                neigh = nx.convert_node_labels_to_integers(neigh)
-                print(i, len(neigh), len(query))
-                if len(neigh) == len(query):
-                    neighs.append(neigh)
-                    found = True
-            elif method == "tree":
-                graph = random.choice(targets)
-                start_node = random.choice(list(graph.nodes))
-                neigh = [start_node]
-                frontier = list(set(graph.neighbors(start_node)) - set(neigh))
-                while len(neigh) < len(query) and frontier:
-                    new_node = random.choice(list(frontier))
-                    assert new_node not in neigh
-                    neigh.append(new_node)
-                    frontier += list(graph.neighbors(new_node))
-                    frontier = [x for x in frontier if x not in neigh]
-                if len(neigh) == len(query):
-                    neigh = graph.subgraph(neigh)
-                    neigh = nx.convert_node_labels_to_integers(neigh)
-                    neighs.append(neigh)
-                    found = True
-    return neighs
+
 
 if __name__ == "__main__":
     main()
