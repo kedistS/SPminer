@@ -469,14 +469,18 @@ def generate_one_baseline(args):
     print(f"[WARN] Baseline not found for query {i} after {MAX_ATTEMPTS} attempts.")
     return nx.Graph()  # Return empty graph if failed
 
-def gen_baseline_queries(queries, targets, method="radial", node_anchored=False):
-    print(f"Generating {len(queries)} baseline queries in parallel using method: {method}")
-    
-    args_list = [(i, query, targets, method) for i, query in enumerate(queries)]
-    with Pool(processes=os.cpu_count()) as pool:
-        results = pool.map(generate_one_baseline, args_list)
-    
-    return results
+def gen_baseline_queries(queries, targets, method="mfinder", node_anchored=False):
+    if method == "mfinder":
+        return utils.gen_baseline_queries_mfinder(queries, targets, node_anchored=node_anchored)
+    elif method == "rand-esu":
+        return utils.gen_baseline_queries_rand_esu(queries, targets, node_anchored=node_anchored)
+    else:
+        print(f"Generating {len(queries)} baseline queries in parallel using method: {method}")
+        args_list = [(i, query, targets, method) for i, query in enumerate(queries)]
+        with Pool(processes=os.cpu_count()) as pool:
+            results = pool.map(generate_one_baseline, args_list)
+        return results
+
 
 def convert_to_networkx(graph):
     if isinstance(graph, nx.Graph):
