@@ -86,6 +86,7 @@ jobs:
             decoder-image:latest \
             bash -c "
               set -e
+              export PYTHONPATH=/app
               echo 'Running pattern counter...'
               python analyze/count_patterns.py \
                 --dataset=results/patterns.pkl \
