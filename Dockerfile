@@ -43,7 +43,7 @@ RUN pip install --no-cache-dir numpy==1.21.6
 
 RUN pip install --no-cache-dir \
     matplotlib==2.1.1 \
-    scikit-learn==0.21.3 \
+    scikit-learn==1.0.2 \
     seaborn==0.9.0
 
 RUN pip install torch==1.4.0+cpu torchvision==0.5.0+cpu -f https://download.pytorch.org/whl/torch_stable.html

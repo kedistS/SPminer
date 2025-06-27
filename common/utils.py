@@ -18,7 +18,7 @@ from common import feature_preprocess
 
 
 def sample_neigh(graphs, size):
-    ps = np.array([len(g) for g in graphs], dtype=np.float)
+    ps = np.array([len(g) for g in graphs], dtype=float)
     ps /= np.sum(ps)
     dist = stats.rv_discrete(values=(np.arange(len(graphs)), ps))
     while True:
@@ -53,14 +53,14 @@ def vec_hash(v):
 
 def wl_hash(g, dim=64, node_anchored=False):
     g = nx.convert_node_labels_to_integers(g)
-    vecs = np.zeros((len(g), dim), dtype=np.int)
+    vecs = np.zeros((len(g), dim), dtype=int)
     if node_anchored:
         for v in g.nodes:
             if g.nodes[v]["anchor"] == 1:
                 vecs[v] = 1
                 break
     for i in range(len(g)):
-        newvecs = np.zeros((len(g), dim), dtype=np.int)
+        newvecs = np.zeros((len(g), dim), dtype=int)
         for n in g.nodes:
             newvecs[n] = vec_hash(np.sum(vecs[list(g.neighbors(n)) + [n]],
                 axis=0))

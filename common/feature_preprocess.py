@@ -153,11 +153,11 @@ class FeatureAugment(nn.Module):
         pos = pos.reshape(-1)
         
         rng = np.arange(0, feature_dim // 2).astype(
-            np.float) / (feature_dim // 2)
+            float) / (feature_dim // 2)
         sins = np.sin(pos[:,np.newaxis] / scale**rng[np.newaxis,:])
         coss = np.cos(pos[:,np.newaxis] / scale**rng[np.newaxis,:])
         m = np.concatenate((coss, sins), axis=-1)
-        m = m.reshape(batch_size, -1).astype(np.float)
+        m = m.reshape(batch_size, -1).astype(float)
         m = torch.from_numpy(m).type(torch.float)
         return m
 
