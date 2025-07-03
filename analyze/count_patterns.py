@@ -110,7 +110,6 @@ def arg_parse():
                        baseline="none",
                        preserve_labels=False)
     return parser.parse_args()
-
 def load_networkx_graph(filepath):
     """Load a Networkx graph from pickle format with proper attributes handling."""
     with open(filepath, 'rb') as f:
@@ -139,6 +138,7 @@ def load_networkx_graph(filepath):
                 graph.add_edge(src, dst)
                 
         return graph
+
 
 def count_graphlets_helper(inp):
     """Worker function to count pattern occurrences with better timeout handling."""
