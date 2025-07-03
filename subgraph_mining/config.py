@@ -51,7 +51,7 @@ def parse_decoder(parser):
     dec_parser.add_argument('--n_clusters', type=int,
         help='number of clusters for analysis')
 
-    # Set default values
+     # Set default values
     parser.set_defaults(
         # Dataset defaults
         dataset="enzymes",
@@ -62,7 +62,6 @@ def parse_decoder(parser):
 
         n_neighborhoods=10000,
         n_trials=1000,
-
 
         decode_thresh=0.5,
         radius=3,
