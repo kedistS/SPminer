@@ -117,7 +117,6 @@ def load_networkx_graph(filepath):
         data = pickle.load(f)
         graph = nx.Graph()
         
-        
         # Add nodes with their attributes
         for node in data['nodes']:
             if isinstance(node, tuple):
@@ -372,49 +371,54 @@ def count_graphlets(queries, targets, args):
     print(f"Generated {len(inp)} tasks after filtering")
     n_done = 0
     last_checkpoint = time.time()
-   
-    with Pool(processes=args.n_workers) as pool:
-        for batch_start in range(0, len(inp), args.batch_size):
-            batch_end = min(batch_start + args.batch_size, len(inp))
-            batch = inp[batch_start:batch_end]
-
-            print(f"Processing batch {batch_start}-{batch_end} out of {len(inp)}")
-            batch_start_time = time.time()
-
-            results = pool.imap_unordered(count_graphlets_helper, batch)
-
-            for result in results:
-                if time.time() - batch_start_time > 3600:  # 1-hour batch timeout
-                    print(f"Batch {batch_start}-{batch_end} taking too long, marking remaining tasks problematic")
-                    # Mark remaining tasks
+    
+    # Process in batches with better error handling and stuck task detection
+    batch_size = args.batch_size
+    for batch_start in range(0, len(inp), batch_size):
+        batch_end = min(batch_start + batch_size, len(inp))
+        batch = inp[batch_start:batch_end]
+        
+        print(f"Processing batch {batch_start}-{batch_end} out of {len(inp)}")
+        batch_start_time = time.time()
+        
+        # Add an overall timeout for the entire batch
+        max_batch_time = 3600  # 1 hour max per batch
+        
+        with Pool(processes=args.n_workers) as pool:
+            for result in pool.imap_unordered(count_graphlets_helper, batch):
+                # Check if the entire batch is taking too long
+                if time.time() - batch_start_time > max_batch_time:
+                    print(f"Batch {batch_start}-{batch_end} taking too long, marking remaining tasks as problematic")
+                    # Mark remaining tasks as problematic
                     for task in batch:
-                        i = task[0]
-                        task_id = f"{i}_{batch_start}"
+                        i = task[0]  # Extract the task ID
+                        task_id = f"{i}_{batch_start}"  # Create task identifier
                         problematic_tasks.add(task_id)
                     break
-
+                    
                 i, n = result
                 n_matches[i] += n
                 n_done += 1
-
+                
+                # Print progress periodically
                 if n_done % 10 == 0:
-                    print(f"Processed {n_done}/{len(inp)} tasks, queries with matches: {sum(1 for v in n_matches.values() if v > 0)}/{len(n_matches)}", flush=True)
-
-                # Periodic checkpoint save
-                if time.time() - last_checkpoint > 300:
+                    print(f"Processed {n_done}/{len(inp)} tasks, queries with matches: {sum(1 for v in n_matches.values() if v > 0)}/{len(n_matches)}",
+                        flush=True)
+                
+                # Save checkpoint and problematic tasks periodically
+                if time.time() - last_checkpoint > 300:  # Every 5 minutes
                     save_checkpoint(n_matches, args.checkpoint_file)
                     with open(problematic_tasks_file, 'w') as f:
                         json.dump(list(problematic_tasks), f)
                     last_checkpoint = time.time()
-
-            # Save checkpoint after each batch
-            save_checkpoint(n_matches, args.checkpoint_file)
-            with open(problematic_tasks_file, 'w') as f:
-                json.dump(list(problematic_tasks), f)
-
+        
+        # Save checkpoint after each batch
+        save_checkpoint(n_matches, args.checkpoint_file)
+        with open(problematic_tasks_file, 'w') as f:
+            json.dump(list(problematic_tasks), f)
+    
     print("\nDone counting")
     return [n_matches[i] for i in range(len(queries))]
-
 
 #multiprocessing gen_baseline_queries ----------------
 def generate_one_baseline(args):
