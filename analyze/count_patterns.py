@@ -117,6 +117,7 @@ def load_networkx_graph(filepath):
         data = pickle.load(f)
         graph = nx.Graph()
         
+        
         # Add nodes with their attributes
         for node in data['nodes']:
             if isinstance(node, tuple):
