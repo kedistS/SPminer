@@ -110,6 +110,7 @@ def arg_parse():
                        baseline="none",
                        preserve_labels=False)
     return parser.parse_args()
+
 def load_networkx_graph(filepath):
     """Load a Networkx graph from pickle format with proper attributes handling."""
     with open(filepath, 'rb') as f:
@@ -138,7 +139,6 @@ def load_networkx_graph(filepath):
                 graph.add_edge(src, dst)
                 
         return graph
-
 
 def count_graphlets_helper(inp):
     """Worker function to count pattern occurrences with better timeout handling."""
@@ -371,54 +371,49 @@ def count_graphlets(queries, targets, args):
     print(f"Generated {len(inp)} tasks after filtering")
     n_done = 0
     last_checkpoint = time.time()
-    
-    # Process in batches with better error handling and stuck task detection
-    batch_size = args.batch_size
-    for batch_start in range(0, len(inp), batch_size):
-        batch_end = min(batch_start + batch_size, len(inp))
-        batch = inp[batch_start:batch_end]
-        
-        print(f"Processing batch {batch_start}-{batch_end} out of {len(inp)}")
-        batch_start_time = time.time()
-        
-        # Add an overall timeout for the entire batch
-        max_batch_time = 3600  # 1 hour max per batch
-        
-        with Pool(processes=args.n_workers) as pool:
-            for result in pool.imap_unordered(count_graphlets_helper, batch):
-                # Check if the entire batch is taking too long
-                if time.time() - batch_start_time > max_batch_time:
-                    print(f"Batch {batch_start}-{batch_end} taking too long, marking remaining tasks as problematic")
-                    # Mark remaining tasks as problematic
+   
+    with Pool(processes=args.n_workers) as pool:
+        for batch_start in range(0, len(inp), args.batch_size):
+            batch_end = min(batch_start + args.batch_size, len(inp))
+            batch = inp[batch_start:batch_end]
+
+            print(f"Processing batch {batch_start}-{batch_end} out of {len(inp)}")
+            batch_start_time = time.time()
+
+            results = pool.imap_unordered(count_graphlets_helper, batch)
+
+            for result in results:
+                if time.time() - batch_start_time > 3600:  # 1-hour batch timeout
+                    print(f"Batch {batch_start}-{batch_end} taking too long, marking remaining tasks problematic")
+                    # Mark remaining tasks
                     for task in batch:
-                        i = task[0]  # Extract the task ID
-                        task_id = f"{i}_{batch_start}"  # Create task identifier
+                        i = task[0]
+                        task_id = f"{i}_{batch_start}"
                         problematic_tasks.add(task_id)
                     break
-                    
+
                 i, n = result
                 n_matches[i] += n
                 n_done += 1
-                
-                # Print progress periodically
+
                 if n_done % 10 == 0:
-                    print(f"Processed {n_done}/{len(inp)} tasks, queries with matches: {sum(1 for v in n_matches.values() if v > 0)}/{len(n_matches)}",
-                        flush=True)
-                
-                # Save checkpoint and problematic tasks periodically
-                if time.time() - last_checkpoint > 300:  # Every 5 minutes
+                    print(f"Processed {n_done}/{len(inp)} tasks, queries with matches: {sum(1 for v in n_matches.values() if v > 0)}/{len(n_matches)}", flush=True)
+
+                # Periodic checkpoint save
+                if time.time() - last_checkpoint > 300:
                     save_checkpoint(n_matches, args.checkpoint_file)
                     with open(problematic_tasks_file, 'w') as f:
                         json.dump(list(problematic_tasks), f)
                     last_checkpoint = time.time()
-        
-        # Save checkpoint after each batch
-        save_checkpoint(n_matches, args.checkpoint_file)
-        with open(problematic_tasks_file, 'w') as f:
-            json.dump(list(problematic_tasks), f)
-    
+
+            # Save checkpoint after each batch
+            save_checkpoint(n_matches, args.checkpoint_file)
+            with open(problematic_tasks_file, 'w') as f:
+                json.dump(list(problematic_tasks), f)
+
     print("\nDone counting")
     return [n_matches[i] for i in range(len(queries))]
+
 
 #multiprocessing gen_baseline_queries ----------------
 def generate_one_baseline(args):
@@ -469,18 +464,14 @@ def generate_one_baseline(args):
     print(f"[WARN] Baseline not found for query {i} after {MAX_ATTEMPTS} attempts.")
     return nx.Graph()  # Return empty graph if failed
 
-def gen_baseline_queries(queries, targets, method="mfinder", node_anchored=False):
-    if method == "mfinder":
-        return utils.gen_baseline_queries_mfinder(queries, targets, node_anchored=node_anchored)
-    elif method == "rand-esu":
-        return utils.gen_baseline_queries_rand_esu(queries, targets, node_anchored=node_anchored)
-    else:
-        print(f"Generating {len(queries)} baseline queries in parallel using method: {method}")
-        args_list = [(i, query, targets, method) for i, query in enumerate(queries)]
-        with Pool(processes=os.cpu_count()) as pool:
-            results = pool.map(generate_one_baseline, args_list)
-        return results
-
+def gen_baseline_queries(queries, targets, method="radial", node_anchored=False):
+    print(f"Generating {len(queries)} baseline queries in parallel using method: {method}")
+    
+    args_list = [(i, query, targets, method) for i, query in enumerate(queries)]
+    with Pool(processes=os.cpu_count()) as pool:
+        results = pool.map(generate_one_baseline, args_list)
+    
+    return results
 
 def convert_to_networkx(graph):
     if isinstance(graph, nx.Graph):
@@ -500,7 +491,7 @@ def main():
         print(f"Loading Networkx graph from {args.dataset}")
         try:
             graph = load_networkx_graph(args.dataset)
-            print(f"Loaded Networkx graph with {graph.number_of_nodes()} nodes and {graph.number_of_edges()} edges")
+           #print(f"Loaded Networkx graph with {graph.number_of_nodes()} nodes and {graph.number_of_edges()} edges")
             dataset = [graph]
         except Exception as e:
             print(f"Error loading graph: {str(e)}")
@@ -541,8 +532,7 @@ def main():
             queries = [q for score, q in cand_patterns[10]][:200]
         dataset = TUDataset(root='/tmp/ENZYMES', name='ENZYMES')
 
-    # Convert dataset to networkx graphs with multiprocesssing.pool to make it faster for large dataset
-    
+    #call convert to graph function
     with Pool(processes=args.n_workers) as pool:
         targets = pool.map(convert_to_networkx, dataset)
 
