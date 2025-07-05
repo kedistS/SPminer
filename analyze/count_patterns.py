@@ -322,8 +322,14 @@ def count_graphlets(queries, targets, args):
         print(f"After sampling: {len(targets)} target graphs to process")
     
     # Pre-compute graph statistics
-    target_stats = [compute_graph_stats(t) for t in targets]
-    query_stats = [compute_graph_stats(q) for q in queries]
+    #target_stats = [compute_graph_stats(t) for t in targets]
+    #query_stats = [compute_graph_stats(q) for q in queries]
+    #changed to multiprocessing using 
+    with Pool(processes=args.n_workers) as pool:
+
+        target_stats = pool.map(compute_graph_stats, targets)
+        
+        query_stats = pool.map(compute_graph_stats, queries)
     
     # Generate work items with filtering
     inp = []
@@ -365,55 +371,113 @@ def count_graphlets(queries, targets, args):
     print(f"Generated {len(inp)} tasks after filtering")
     n_done = 0
     last_checkpoint = time.time()
-    
-    # Process in batches with better error handling and stuck task detection
-    batch_size = args.batch_size
-    for batch_start in range(0, len(inp), batch_size):
-        batch_end = min(batch_start + batch_size, len(inp))
-        batch = inp[batch_start:batch_end]
-        
-        print(f"Processing batch {batch_start}-{batch_end} out of {len(inp)}")
-        batch_start_time = time.time()
-        
-        # Add an overall timeout for the entire batch
-        max_batch_time = 3600  # 1 hour max per batch
-        
-        with Pool(processes=args.n_workers) as pool:
-            for result in pool.imap_unordered(count_graphlets_helper, batch):
-                # Check if the entire batch is taking too long
-                if time.time() - batch_start_time > max_batch_time:
-                    print(f"Batch {batch_start}-{batch_end} taking too long, marking remaining tasks as problematic")
-                    # Mark remaining tasks as problematic
+   
+    with Pool(processes=args.n_workers) as pool:
+        for batch_start in range(0, len(inp), args.batch_size):
+            batch_end = min(batch_start + args.batch_size, len(inp))
+            batch = inp[batch_start:batch_end]
+
+            print(f"Processing batch {batch_start}-{batch_end} out of {len(inp)}")
+            batch_start_time = time.time()
+
+            results = pool.imap_unordered(count_graphlets_helper, batch)
+
+            for result in results:
+                if time.time() - batch_start_time > 3600:  # 1-hour batch timeout
+                    print(f"Batch {batch_start}-{batch_end} taking too long, marking remaining tasks problematic")
+                    # Mark remaining tasks
                     for task in batch:
-                        i = task[0]  # Extract the task ID
-                        task_id = f"{i}_{batch_start}"  # Create task identifier
+                        i = task[0]
+                        task_id = f"{i}_{batch_start}"
                         problematic_tasks.add(task_id)
                     break
-                    
+
                 i, n = result
                 n_matches[i] += n
                 n_done += 1
-                
-                # Print progress periodically
+
                 if n_done % 10 == 0:
-                    print(f"Processed {n_done}/{len(inp)} tasks, queries with matches: {sum(1 for v in n_matches.values() if v > 0)}/{len(n_matches)}",
-                        flush=True)
-                
-                # Save checkpoint and problematic tasks periodically
-                if time.time() - last_checkpoint > 300:  # Every 5 minutes
+                    print(f"Processed {n_done}/{len(inp)} tasks, queries with matches: {sum(1 for v in n_matches.values() if v > 0)}/{len(n_matches)}", flush=True)
+
+                # Periodic checkpoint save
+                if time.time() - last_checkpoint > 300:
                     save_checkpoint(n_matches, args.checkpoint_file)
                     with open(problematic_tasks_file, 'w') as f:
                         json.dump(list(problematic_tasks), f)
                     last_checkpoint = time.time()
-        
-        # Save checkpoint after each batch
-        save_checkpoint(n_matches, args.checkpoint_file)
-        with open(problematic_tasks_file, 'w') as f:
-            json.dump(list(problematic_tasks), f)
-    
+
+            # Save checkpoint after each batch
+            save_checkpoint(n_matches, args.checkpoint_file)
+            with open(problematic_tasks_file, 'w') as f:
+                json.dump(list(problematic_tasks), f)
+
     print("\nDone counting")
     return [n_matches[i] for i in range(len(queries))]
 
+
+#multiprocessing gen_baseline_queries ----------------
+def generate_one_baseline(args):
+    import networkx as nx
+    import random
+
+    i, query, targets, method = args
+
+    if len(query) == 0:
+        return query
+
+    MAX_ATTEMPTS = 100  # Avoid infinite loops
+
+    for attempt in range(MAX_ATTEMPTS):
+        try:
+            graph = random.choice(targets)
+            if graph.number_of_nodes() == 0:
+                continue
+
+            if method == "radial":
+                node = random.choice(list(graph.nodes))
+                neigh = list(nx.single_source_shortest_path_length(graph, node, cutoff=3).keys())
+                subgraph = graph.subgraph(neigh)
+                if subgraph.number_of_nodes() == 0:
+                    continue
+                largest_cc = max(nx.connected_components(subgraph), key=len)
+                neigh = subgraph.subgraph(largest_cc)
+                neigh = nx.convert_node_labels_to_integers(neigh)
+                if len(neigh) == len(query):
+                    return neigh
+
+            elif method == "tree":
+                start_node = random.choice(list(graph.nodes))
+                neigh = [start_node]
+                frontier = list(set(graph.neighbors(start_node)) - set(neigh))
+                while len(neigh) < len(query) and frontier:
+                    new_node = random.choice(frontier)
+                    neigh.append(new_node)
+                    frontier += list(graph.neighbors(new_node))
+                    frontier = [x for x in frontier if x not in neigh]
+                if len(neigh) == len(query):
+                    sub = graph.subgraph(neigh)
+                    return nx.convert_node_labels_to_integers(sub)
+
+        except Exception as e:
+            continue  # Safe fallback on error
+
+    print(f"[WARN] Baseline not found for query {i} after {MAX_ATTEMPTS} attempts.")
+    return nx.Graph()  # Return empty graph if failed
+
+def gen_baseline_queries(queries, targets, method="radial", node_anchored=False):
+    print(f"Generating {len(queries)} baseline queries in parallel using method: {method}")
+    
+    args_list = [(i, query, targets, method) for i, query in enumerate(queries)]
+    with Pool(processes=os.cpu_count()) as pool:
+        results = pool.map(generate_one_baseline, args_list)
+    
+    return results
+
+def convert_to_networkx(graph):
+    if isinstance(graph, nx.Graph):
+        return graph
+    return pyg_utils.to_networkx(graph).to_undirected()
+    
 def main():
     global args
     args = arg_parse()
@@ -427,7 +491,7 @@ def main():
         print(f"Loading Networkx graph from {args.dataset}")
         try:
             graph = load_networkx_graph(args.dataset)
-            print(f"Loaded Networkx graph with {graph.number_of_nodes()} nodes and {graph.number_of_edges()} edges")
+           #print(f"Loaded Networkx graph with {graph.number_of_nodes()} nodes and {graph.number_of_edges()} edges")
             dataset = [graph]
         except Exception as e:
             print(f"Error loading graph: {str(e)}")
@@ -468,13 +532,9 @@ def main():
             queries = [q for score, q in cand_patterns[10]][:200]
         dataset = TUDataset(root='/tmp/ENZYMES', name='ENZYMES')
 
-    # Convert dataset to networkx graphs
-    targets = []
-    for i in range(len(dataset)):
-        graph = dataset[i]
-        if not type(graph) == nx.Graph:
-            graph = pyg_utils.to_networkx(dataset[i]).to_undirected()
-        targets.append(graph)
+    #call convert to graph function
+    with Pool(processes=args.n_workers) as pool:
+        targets = pool.map(convert_to_networkx, dataset)
 
     # Load query patterns
     if args.dataset != "analyze":
@@ -505,54 +565,7 @@ def main():
         json.dump((query_lens, n_matches, []), f)
     print(f"Results saved to {args.out_path}")
 
-def gen_baseline_queries(queries, targets, method="mfinder", node_anchored=False):
-    """Generate baseline queries for comparison."""
-    if method == "mfinder":
-        return utils.gen_baseline_queries_mfinder(queries, targets,
-            node_anchored=node_anchored)
-    elif method == "rand-esu":
-        return utils.gen_baseline_queries_rand_esu(queries, targets,
-            node_anchored=node_anchored)
-    
-    # Other methods implementation
-    neighs = []
-    for i, query in enumerate(queries):
-        print(i)
-        found = False
-        if len(query) == 0:
-            neighs.append(query)
-            found = True
-        while not found:
-            if method == "radial":
-                graph = random.choice(targets)
-                node = random.choice(list(graph.nodes))
-                neigh = list(nx.single_source_shortest_path_length(graph, node,
-                    cutoff=3).keys())
-                neigh = graph.subgraph(neigh)
-                neigh = neigh.subgraph(list(sorted(nx.connected_components(
-                    neigh), key=len))[-1])
-                neigh = nx.convert_node_labels_to_integers(neigh)
-                print(i, len(neigh), len(query))
-                if len(neigh) == len(query):
-                    neighs.append(neigh)
-                    found = True
-            elif method == "tree":
-                graph = random.choice(targets)
-                start_node = random.choice(list(graph.nodes))
-                neigh = [start_node]
-                frontier = list(set(graph.neighbors(start_node)) - set(neigh))
-                while len(neigh) < len(query) and frontier:
-                    new_node = random.choice(list(frontier))
-                    assert new_node not in neigh
-                    neigh.append(new_node)
-                    frontier += list(graph.neighbors(new_node))
-                    frontier = [x for x in frontier if x not in neigh]
-                if len(neigh) == len(query):
-                    neigh = graph.subgraph(neigh)
-                    neigh = nx.convert_node_labels_to_integers(neigh)
-                    neighs.append(neigh)
-                    found = True
-    return neighs
+
 
 if __name__ == "__main__":
     main()

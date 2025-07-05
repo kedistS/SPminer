@@ -2,9 +2,9 @@ name: Run Decoder
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+    branches: [main]
   workflow_dispatch:
 
 jobs:
@@ -48,6 +48,18 @@ jobs:
           chmod -R 777 ${{ github.workspace }}/plots
           chmod -R 777 ${{ github.workspace }}/results
 
+      - name: Check available processors and usage percentage
+        id: cpu-check
+        run: |
+          TOTAL_CPUS=$(nproc)
+          USED_CPUS=4
+          PERCENT_USED=$(( 100 * USED_CPUS / TOTAL_CPUS ))
+          echo "Total available processors: $TOTAL_CPUS"
+          echo "Processors used for decoder: $USED_CPUS"
+          echo "Percent of processors used: ${PERCENT_USED}%"
+          echo "total_cpus=$TOTAL_CPUS" >> $GITHUB_OUTPUT
+          echo "percent_used=$PERCENT_USED" >> $GITHUB_OUTPUT
+
       - name: Run decoder in Docker container
         run: |
           docker run --rm \
@@ -59,12 +71,32 @@ jobs:
               echo 'Starting decoder run...'
               python -m subgraph_mining.decoder \
                 --dataset=metta.pkl \
+                --n_trials=50 \
                 --node_anchored \
                 --out_path=/app/results/patterns.pkl
               echo 'Checking output directories...'
               ls -la /app/plots/cluster
               ls -la /app/results
               "
+      - name: Run pattern counter in Docker container
+        run: |
+          docker run --rm \
+            -v ${{ github.workspace }}:/app \
+            -e PYTHONUNBUFFERED=1 \
+            decoder-image:latest \
+            bash -c "
+              set -e
+              export PYTHONPATH=/app
+              echo 'Running pattern counter...'
+              python -m analyze.count_patterns \
+                --dataset=graph.pkl \
+                --queries_path=results/patterns.pkl \
+                --out_path=results/ \
+                --node_anchored \
+                --preserve_labels
+              echo 'Counting completed.'
+              ls -la /app/results
+            "
 
       - name: Check for generated files
         run: |
@@ -74,7 +106,7 @@ jobs:
           ls -R results/ || echo "No results directory found"
 
       - name: Upload plots as artifact
-        if: always()  # Run even if previous steps failed
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: decoder-plots
@@ -82,7 +114,7 @@ jobs:
             plots/
             results/
           retention-days: 7
-          if-no-files-found: warn  # Warn if no files found instead of failing
+          if-no-files-found: warn
 
       - name: Upload logs
         if: always()
