@@ -228,9 +228,7 @@ def pattern_growth(dataset, task, args):
         elif args.sample_method == "tree":
             start_time = time.time()
             for j in tqdm(range(args.n_neighborhoods)):
-                graph, neigh = utils.sample_neigh(graphs,
-                    random.randint(args.min_neighborhood_size,
-                        args.max_neighborhood_size))
+                graph, neigh = utils.sample_neigh(graphs, random.randint(args.min_neighborhood_size, args.max_neighborhood_size))
                 subgraph = graph.subgraph(neigh)
                 
                 mapping = {old: new for new, old in enumerate(subgraph.nodes())}

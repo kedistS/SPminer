@@ -13,11 +13,20 @@ import random
 import scipy.stats as stats
 from tqdm import tqdm
 import warnings
+import argparse
+from subgraph_mining.config import parse_decoder
+from subgraph_matching.config import parse_encoder
+
 
 from common import feature_preprocess
 
+parser = argparse.ArgumentParser(description='Decoder arguments')
+parse_encoder(parser)
+parse_decoder(parser)
+args = parser.parse_args()
 
-def sample_neigh(graph_type, graphs, size):
+def sample_neigh(graphs, size):
+    graph_type = args.graph_type
     ps = np.array([len(g) for g in graphs], dtype=float)
     ps /= np.sum(ps)
     dist = stats.rv_discrete(values=(np.arange(len(graphs)), ps))
