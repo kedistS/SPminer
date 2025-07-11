@@ -53,7 +53,7 @@ def parse_decoder(parser):
     
     # Graph type selection
     dec_parser.add_argument('--graph_type', type=str,
-        help='"directed" or "undirected" sampling method')
+        help='"directed" or "undirected" graph type')
 
     # Set default values
     parser.set_defaults(
@@ -69,7 +69,7 @@ def parse_decoder(parser):
         radius=3,
         subgraph_sample_size=0,
         sample_method="tree",
-        graph_type="undirected",
+        graph_type="directed",
         skip="learnable",
         min_pattern_size=5,
         max_pattern_size=10,
