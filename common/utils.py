@@ -68,6 +68,7 @@ def wl_hash(g, dim=64, node_anchored=False):
     for i in range(len(g)):
         newvecs = np.zeros((len(g), dim), dtype=int)
         for n in g.nodes:
+            # used in counter TODO
             newvecs[n] = vec_hash(np.sum(vecs[list(g.neighbors(n)) + [n]],
                 axis=0))
         vecs = newvecs
