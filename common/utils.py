@@ -17,7 +17,7 @@ import warnings
 from common import feature_preprocess
 
 
-def sample_neigh(graphs, size):
+def sample_neigh(graph_type, graphs, size):
     ps = np.array([len(g) for g in graphs], dtype=float)
     ps /= np.sum(ps)
     dist = stats.rv_discrete(values=(np.arange(len(graphs)), ps))
@@ -27,7 +27,10 @@ def sample_neigh(graphs, size):
         graph = graphs[idx]
         start_node = random.choice(list(graph.nodes))
         neigh = [start_node]
-        frontier = list(set(graph.neighbors(start_node)) - set(neigh))
+        if graph_type == "undirected":
+            frontier = list(set(graph.neighbors(start_node)) - set(neigh))
+        elif graph_type == "directed":
+            frontier = list(set(graph.successors(start_node)) - set(neigh))
         visited = set([start_node])
         while len(neigh) < size and frontier:
             new_node = random.choice(list(frontier))
@@ -35,7 +38,10 @@ def sample_neigh(graphs, size):
             assert new_node not in neigh
             neigh.append(new_node)
             visited.add(new_node)
-            frontier += list(graph.neighbors(new_node))
+            if graph_type == "undirected":
+                frontier += list(graph.neighbors(new_node))
+            elif graph_type == "directed":
+                frontier += list(graph.successors(new_node))
             frontier = [x for x in frontier if x not in visited]
         if len(neigh) == size:
             return graph, neigh
