@@ -181,7 +181,7 @@ def pattern_growth(dataset, task, args):
     for i, graph in enumerate(dataset):
         if task == "graph-labeled" and labels[i] != 0: continue
         if task == "graph-truncate" and i >= 1000: break
-        if not type(graph) == nx.Graph:
+        if not type(graph) == nx.Graph and not type(graph) == nx.DiGraph:
             graph = pyg_utils.to_networkx(graph).to_undirected()
             # Only add default attributes if they don't exist
             for node in graph.nodes():
