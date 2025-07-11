@@ -13,20 +13,11 @@ import random
 import scipy.stats as stats
 from tqdm import tqdm
 import warnings
-import argparse
-from subgraph_mining.config import parse_decoder
-from subgraph_matching.config import parse_encoder
-
 
 from common import feature_preprocess
 
-parser = argparse.ArgumentParser(description='Decoder arguments')
-parse_encoder(parser)
-parse_decoder(parser)
-args = parser.parse_args()
 
 def sample_neigh(graphs, size):
-    graph_type = args.graph_type
     ps = np.array([len(g) for g in graphs], dtype=float)
     ps /= np.sum(ps)
     dist = stats.rv_discrete(values=(np.arange(len(graphs)), ps))
@@ -36,10 +27,7 @@ def sample_neigh(graphs, size):
         graph = graphs[idx]
         start_node = random.choice(list(graph.nodes))
         neigh = [start_node]
-        if graph_type == "undirected":
-            frontier = list(set(graph.neighbors(start_node)) - set(neigh))
-        elif graph_type == "directed":
-            frontier = list(set(graph.successors(start_node)) - set(neigh))
+        frontier = list(set(graph.neighbors(start_node)) - set(neigh))
         visited = set([start_node])
         while len(neigh) < size and frontier:
             new_node = random.choice(list(frontier))
@@ -47,10 +35,7 @@ def sample_neigh(graphs, size):
             assert new_node not in neigh
             neigh.append(new_node)
             visited.add(new_node)
-            if graph_type == "undirected":
-                frontier += list(graph.neighbors(new_node))
-            elif graph_type == "directed":
-                frontier += list(graph.successors(new_node))
+            frontier += list(graph.neighbors(new_node))
             frontier = [x for x in frontier if x not in visited]
         if len(neigh) == size:
             return graph, neigh
@@ -77,7 +62,6 @@ def wl_hash(g, dim=64, node_anchored=False):
     for i in range(len(g)):
         newvecs = np.zeros((len(g), dim), dtype=int)
         for n in g.nodes:
-            # used in counter TODO
             newvecs[n] = vec_hash(np.sum(vecs[list(g.neighbors(n)) + [n]],
                 axis=0))
         vecs = newvecs

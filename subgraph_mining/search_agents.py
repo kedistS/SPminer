@@ -298,10 +298,7 @@ def run_greedy_trial(trial_idx):
     start_node = random.choice(list(graph.nodes))
 
     neigh = [start_node]
-    if worker_args.graph_type == "undirected":
-        frontier = list(set(graph.neighbors(start_node)) - set(neigh))
-    elif worker_args.graph_type == "directed":
-        frontier = list(set(graph.successors(start_node)) - set(neigh))
+    frontier = list(set(graph.neighbors(start_node)) - set(neigh))
     visited = {start_node}
 
     trial_patterns = defaultdict(list)
@@ -342,10 +339,8 @@ def run_greedy_trial(trial_idx):
 
         if best_node is None:
             break
-        if worker_args.graph_type == "undirected":
-            frontier = list(((set(frontier) | set(graph.neighbors(best_node))) - visited) - {best_node})
-        elif worker_args.graph_type == "directed":
-            frontier = list(((set(frontier) | set(graph.successors(best_node))) - visited) - {best_node})
+
+        frontier = list(((set(frontier) | set(graph.neighbors(best_node))) - visited) - {best_node})
         visited.add(best_node)
         neigh.append(best_node)
 

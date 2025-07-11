@@ -181,7 +181,7 @@ def pattern_growth(dataset, task, args):
     for i, graph in enumerate(dataset):
         if task == "graph-labeled" and labels[i] != 0: continue
         if task == "graph-truncate" and i >= 1000: break
-        if not type(graph) == nx.Graph and not type(graph) == nx.DiGraph:
+        if not type(graph) == nx.Graph:
             graph = pyg_utils.to_networkx(graph).to_undirected()
             # Only add default attributes if they don't exist
             for node in graph.nodes():
@@ -228,7 +228,9 @@ def pattern_growth(dataset, task, args):
         elif args.sample_method == "tree":
             start_time = time.time()
             for j in tqdm(range(args.n_neighborhoods)):
-                graph, neigh = utils.sample_neigh(graphs, random.randint(args.min_neighborhood_size, args.max_neighborhood_size))
+                graph, neigh = utils.sample_neigh(graphs,
+                    random.randint(args.min_neighborhood_size,
+                        args.max_neighborhood_size))
                 subgraph = graph.subgraph(neigh)
                 
                 mapping = {old: new for new, old in enumerate(subgraph.nodes())}
