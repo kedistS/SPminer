@@ -69,7 +69,7 @@ def parse_decoder(parser):
         radius=3,
         subgraph_sample_size=0,
         sample_method="tree",
-        graph_type="directed",
+        graph_type="undirected",
         skip="learnable",
         min_pattern_size=5,
         max_pattern_size=10,

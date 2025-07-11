@@ -435,47 +435,15 @@ def main():
     if args.dataset.endswith('.pkl'):
         with open(args.dataset, 'rb') as f:
             data = pickle.load(f)
-        
-            if isinstance(data, nx.DiGraph) or isinstance(data, nx.Graph):
-                graph = data
-                print(f"Loaded complete graph object: {type(graph)}")
-                print(f"Is directed: {graph.is_directed()}")
-            
-            elif isinstance(data, dict) and 'graph_type' in data:
-                if data['graph_type'] == 'directed' or data.get('is_directed', False):
-                    graph = nx.DiGraph()
-                    print("Creating directed graph from data format")
-                else:
-                    graph = nx.Graph()
-                    print("Creating undirected graph from data format")
-                
-                for node_id, attrs in data['nodes']:
-                    graph.add_node(node_id, **attrs)
-            
-                for source, target, attrs in data['edges']:
-                    graph.add_edge(source, target, **attrs)
-        
-            else:
-                print("Loading old format - assuming directed graph")
+            if args.graph_type == "undirected":
+                graph = nx.Graph()
+            elif args.graph_type == "directed":
                 graph = nx.DiGraph()
-            
-                for node_data in data['nodes']:
-                    if len(node_data) == 2:
-                        node_id, attrs = node_data
-                        graph.add_node(node_id, **attrs)
-                    else:
-                        graph.add_node(node_data)
-            
-                for edge_data in data['edges']:
-                    if len(edge_data) == 3:
-                        source, target, attrs = edge_data
-                        graph.add_edge(source, target, **attrs)
-                    else:
-                        source, target = edge_data
-                        graph.add_edge(source, target)
-    
+            graph.add_nodes_from(data['nodes'])
+            graph.add_edges_from(data['edges'])
         dataset = [graph]
         task = 'graph'
+        print(f"Loaded Neo4j graph with {graph.number_of_nodes()} nodes and {graph.number_of_edges()} edges")
             
     elif args.dataset == 'enzymes':
         dataset = TUDataset(root='/tmp/ENZYMES', name='ENZYMES')
