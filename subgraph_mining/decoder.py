@@ -373,10 +373,10 @@ def pattern_growth(dataset, task, args):
                                     bbox=dict(facecolor='lightyellow', edgecolor='darkred', alpha=0.8))
 
             graph_type = "Directed" if pattern.is_directed() else "Undirected"
-            plt.title(f"{graph_type} Pattern Graph\n"
+            plt.title('\n' + f"{graph_type} Pattern Graph\n"
                  f"Nodes: {len(pattern.nodes())} | Edges: {len(pattern.edges())}\n"
                  f"Node Types: {', '.join(unique_labels)}", 
-                 fontsize=14, fontweight='bold', pad=20)
+                 fontsize=14, fontweight='bold')
 
             if pattern.is_directed():
                 legend_elements = [
